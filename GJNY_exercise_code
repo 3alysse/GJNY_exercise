@@ -1,0 +1,73 @@
+import pandas as pd
+import numpy as np
+import datetime as dt
+from dateutil.relativedelta import relativedelta
+from matplotlib.colors import ListedColormap
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+### reading and saving data
+albany_admissions_data = pd.read_csv("albany_admissions.csv")
+nyc_admissions_data = pd.read_csv("nyc_admissions.csv")
+ny_total_data = pd.concat(objs = [albany_admissions_data, nyc_admissions_data], axis = 0)
+
+
+### creating new column for race and ethnicity combined
+ny_total_data.loc[(ny_total_data.race == "Black"), ["race_ethnicity"]] = "Black"
+ny_total_data.loc[(ny_total_data.race == "White") & (ny_total_data.ethnicity == 'Non-Hispanic'), ["race_ethnicity"]] = "White, non-latin"
+ny_total_data.loc[(ny_total_data.race == "Unknown") & (ny_total_data.ethnicity == 'Non-Hispanic'), ["race_ethnicity"]] = "Unknown"
+ny_total_data.loc[(ny_total_data.race != "Black") & (ny_total_data.ethnicity == 'Hispanic'), ["race_ethnicity"]] = "Latin, non-black"
+ny_total_data.loc[(ny_total_data.race != "Black") & (ny_total_data.race != "White") & (ny_total_data.race != "Unknown"), ["race_ethnicity"]] = "Other"
+
+### creating new column for each month of the data
+ny_total_data["month"] = ny_total_data["admission_date"].str.extract(r"(.......)")
+
+
+#### creating new column for 2019 and 2020
+ny_total_data = ny_total_data.assign(year = ny_total_data["admission_date"].str.extract(r"(....)"))
+
+#### establishing subplots and variables that will be used by multiple plots
+f, (ax1, ax2, ax3) = plt.subplots(3, 1)
+race_order= ["Black", "Other", "White, non-latin", "Latin, non-black", "Unknown"]
+month_order = ["2019-01", "2019-02", "2019-03", "2019-04", "2019-05", "2019-06", "2019-07", "2019-08", "2019-09", "2019-10", "2019-11", "2019-12", "2020-01", "2020-02", "2020-03", "2020-04", "2020-05", "2020-06", "2020-07", "2020-08", "2020-09", "2020-10", "2020-11", "2020-12"]
+
+### figure 1, a bar plot of Jail Population Before and After Bail Reform by Race/Ethnicity
+# assigning data variables
+ny_race = ny_total_data["race_ethnicity"]
+ny_years = ny_total_data["year"]
+# plotting bar graph
+ny_plot_1 = sns.countplot(x = ny_race, hue = ny_years, order = race_order, hue_order = ["2019", "2020"], palette = "Spectral", ax = ax1)
+# labeling variables
+ny_plot_1.set(xlabel = "Race", ylabel = "Jail Population", title = "Jail Population Before and After Bail Reform by Race/Ethnicity")
+
+### figure 2, a line graph of jail populations for non-violent felonies over time based on race/ethnicity
+
+# aggregate and melt desired data (date, race, and population)
+agg_ny_data = ny_total_data[ny_total_data["severity"] == "Non-Violent Felony"].groupby(["month","race_ethnicity"]).severity.count().unstack().fillna(0).reset_index()
+melt_ny_data = pd.melt(agg_ny_data, id_vars = "month", value_vars = agg_ny_data.columns, var_name="Race/Ethnicity", value_name="Jail Population")
+# plot line graph
+ny_plot_2 = sns.lineplot(x = melt_ny_data.month, y = melt_ny_data["Jail Population"], hue = melt_ny_data["Race/Ethnicity"], palette = "Spectral", ax = ax2, linewidth = 3)
+ny_plot_2.set(xlabel = "Month", title = "Jail Population of Non-Violent Felonies Based on Race/Ethnicity")
+# rotate xlabels
+ax2.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+
+
+### figure 3, a figure on pretrial incarceration pre and post bail reform
+
+# pull just poc data and aggregate admission status data
+poc_bail_data = ny_total_data[(ny_total_data.race_ethnicity != "White") & (ny_total_data.race_ethnicity != "Unkown") & (ny_total_data.severity != "Violent Felony")]
+bail_data_agg = poc_bail_data.groupby(["month","bail_eligible"]).admission_status.count().unstack().reset_index()
+# map seaborn colors to matplotlib color map
+my_cmap = ListedColormap(sns.color_palette("Spectral").as_hex())
+# plot stacked bar graph
+ny_plot_3 = bail_data_agg.plot(x = "month", kind = "bar", stacked = True, ax = ax3, cmap = my_cmap)
+# label variables and rotate xlabels
+plt.legend(title = "Bail Eligible")
+ax3.set(xlabel = "Month", ylabel = "Jail Population", title = "Jail Population of People of Color Based on Bail Eligibility Excluding Violent Felonies")
+ax3.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+
+### change spaces in between subplots and plot graphs
+
+plt.subplots_adjust(hspace = .5)
+plt.show()
